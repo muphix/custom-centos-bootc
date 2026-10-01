@@ -1,0 +1,51 @@
+name: Build bootc image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-26.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        run: |
+          podman build \
+            --pull=always \
+            --tag=working-image \
+            .
+
+      - name: Check
+        run: |
+          podman run --rm \
+            working-image \
+            bootc container lint --fatal-warnings
+
+      - name: Push
+        run: |
+          set -euo pipefail
+          for t in latest "${GITHUB_SHA}"
+          do
+            podman tag working-image "${IMAGE}:${t}"
+            podman push "${IMAGE}:${t}"
+          done
+
