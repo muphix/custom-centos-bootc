@@ -1,0 +1,8 @@
+FROM quay.io/centos-bootc/centos-bootc:stream10
+
+LABEL org.opencontainers.image.source="https://github.com/muphix/custom-centos-bootc"
+
+RUN --mount=type=bind,source=scripts/setup,target=/tmp/setup,Z \
+    /bin/bash /tmp/setup
+
+# vim:ft=dockerfile:ts=4:sw=4:

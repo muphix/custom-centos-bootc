@@ -1,0 +1,157 @@
+#!/bin/bash
+set -xueo pipefail
+
+dnf -y config-manager --set-enabled crb
+dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+
+dnf -y groupinstall \
+	--exclude='*plymouth*' \
+	--exclude='*grub2*' \
+	core \
+	base \
+	standard \
+	networkmanager-submodules \
+	print-client \
+	fonts \
+	guest-desktop-agents \
+	hardware-support \
+	container-management \
+	hardware-monitoring \
+	gnome-desktop
+
+dnf -y install \
+	tmux \
+	pax-utils \
+	ibus \
+	ibus-hangul \
+	ibus-anthy
+
+dnf -y install \
+	--allowerasing \
+	--setopt protected_packages= \
+	systemd-boot-unsigned \
+	sdubby
+
+dnf -y remove '*plymouth*'
+
+dnf clean all
+
+set -o noclobber
+
+getent group libstoragemgmt && body="g libstoragemgmt 974"
+getent passwd libstoragemgmt && body="${body:+${body}
+}u libstoragemgmt 974:974 \"daemon account for libstoragemgmt\" / /usr/sbin/nologin"
+
+if [[ -n ${body:-} ]]
+then
+	printf "%s" "$body" >/usr/lib/sysusers.d/libstoragemgmt.conf
+	unset body
+	userdel libstoragemgmt
+	groupdel libstoragemgmt || :
+fi
+
+getent group wsdd && body="g wsdd 995"
+getent passwd wsdd && body="${body:+${body}
+}u wsdd 992:995 \"Web Services Dynamic Discovery host daemon\" / /sbin/nologin"
+
+if [[ -n ${body:-} ]]
+then
+	printf "%s" "$body" >/usr/lib/sysusers.d/wsdd.conf
+	body=
+	userdel wsdd
+	groupdel wsdd || :
+fi
+
+printf "%s" 'd /var/lib/AccountsService 0775 root root - -
+d /var/lib/AccountsService/icons 0775 root root - -
+d /var/lib/AccountsService/users 0700 root root - -
+d /var/lib/PackageKit 0755 root root - -
+d /var/lib/brltty 0755 root root - -
+d /var/lib/color 0755 root root - -
+d /var/lib/color/icc 0755 root root - -
+d /var/lib/flatpak 0755 root root - -
+d /var/lib/fprint 0700 root root - -
+d /var/lib/gdm 1770 gdm gdm - -
+d /var/lib/gdm/.config 0700 gdm gdm - -
+d /var/lib/gdm/.config/pulse 0700 gdm gdm - -
+d /var/lib/geoclue 0755 geoclue geoclue - -
+d /var/lib/hyperv 0755 root root - -
+d /var/lib/iscsi 0755 root root - -
+d /var/lib/iscsi/ifaces 0755 root root - -
+d /var/lib/iscsi/isns 0755 root root - -
+d /var/lib/iscsi/nodes 0755 root root - -
+d /var/lib/iscsi/send_targets 0755 root root - -
+d /var/lib/iscsi/slp 0755 root root - -
+d /var/lib/iscsi/static 0755 root root - -
+d /var/lib/kpatch 0755 root root - -
+d /var/lib/net-snmp 0755 root root - -
+d /var/lib/net-snmp/cert_indexes 0755 root root - -
+d /var/lib/net-snmp/mib_indexes 0755 root root - -
+d /var/lib/tuned 0755 root root - -
+d /var/lib/xfsdump 0755 root root - -
+d /var/lib/xfsdump/inventory 0755 root root - -
+d /var/spool/cups 0710 root lp - -
+' >/usr/lib/tmpfiles.d/bootc-image.conf
+
+rm -rf \
+	/var/lib/AccountsService \
+	/var/lib/PackageKit \
+	/var/lib/brltty \
+	/var/lib/color \
+	/var/lib/flatpak \
+	/var/lib/fprint \
+	/var/lib/gdm \
+	/var/lib/geoclue \
+	/var/lib/hyperv \
+	/var/lib/iscsi \
+	/var/lib/kpatch \
+	/var/lib/net-snmp \
+	/var/lib/tuned \
+	/var/lib/xfsdump \
+	/var/spool/cups
+
+set +o noclobber
+
+# if there is already "store-root=/etc/selinux" in /etc/selinux/semanage.conf
+# and /var/lib/selinux is effectively empty directory.
+if (($(grep -c '^store-root=/etc/selinux$' /etc/selinux/semanage.conf))) \
+	|| find /var/lib/selinux -mindepth 1 -not -type d -print -quit | grep -q .
+then
+    rm -rf /var/lib/selinux
+else
+    echo >&2 "Unexpected SELinux store content under /var/lib/selinux"
+    find /var/lib/selinux -mindepth 1 -ls >&2
+    exit 1
+fi
+
+# DNF/build-time state
+rm -rf \
+	/boot/efi \
+    /var/cache/* \
+    /var/lib/dnf \
+    /var/lib/rhsm \
+    /var/log/*
+
+# Transient runtime state
+rm -rf \
+    /run/cockpit \
+    /run/cups \
+    /run/gdm \
+    /run/lock \
+    /run/lsm \
+    /run/rhsm \
+    /run/selinux-policy \
+    /run/setroubleshoot \
+    /run/spice-vdagentd \
+    /run/tuned
+
+rm -rf \
+	/var/roothome/.cache
+
+rm -f \
+	/var/roothome/.viminfo \
+	/var/roothome/buildinfo/content-sets.json
+
+bootc container lint --no-truncate  --fatal-warnings
+
+# vim:ft=bash:ts=4:sw=4:sts=-1:noet:
